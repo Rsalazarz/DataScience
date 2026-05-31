@@ -1,0 +1,10 @@
+# Secrets — never commit your real env file.
+alerts.env
+
+# Runtime state and logs.
+alert_state.json
+*.log
+
+# Python bytecode cache.
+__pycache__/
+*.pyc
