@@ -83,6 +83,16 @@ read -r -p "Proceed? [y/N] " ok
 
 gcloud config set project "$PROJECT_ID" >/dev/null
 
+# --- Auth check -------------------------------------------------------------
+# Cloud Shell sometimes starts without active credentials, which makes later
+# steps fail with confusing errors (e.g. a false "billing not enabled").
+if ! gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | grep -q .; then
+  echo "[!] No active gcloud account in this session."
+  echo "    Run:  gcloud auth login"
+  echo "    (or click 'Authorize' in Cloud Shell), then re-run this script."
+  exit 1
+fi
+
 # --- 0. Billing sanity check (warn only) ------------------------------------
 if gcloud billing projects describe "$PROJECT_ID" \
       --format='value(billingEnabled)' 2>/dev/null | grep -qi true; then
