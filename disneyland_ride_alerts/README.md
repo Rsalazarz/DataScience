@@ -1,15 +1,25 @@
 # Disneyland Ride Alerts 🎢
 
-Emails you when specific **Disneyland Park (California)** rides open and when
-their wait time drops under a threshold (default **30 minutes**).
+Emails you when specific **Disneyland Resort (California)** rides open and when
+their wait time drops under your thresholds (default **20 min, then 10 min** —
+a heads-up at 20 and a more urgent ping under 10).
 
-Watched rides (out of the box):
+Watched rides (out of the box) — across **both parks**:
 
+_Disneyland Park:_
 - **Star Wars: Rise of the Resistance**
 - **Millennium Falcon: Smugglers Run**
+- **Star Tours – The Adventures Continue**
+- **Big Thunder Mountain Railroad**
+- **"it's a small world"**
+
+_Disney California Adventure:_
+- **Grizzly River Run**
+- **Radiator Springs Racers**
+- **Monsters, Inc. Mike & Sulley to the Rescue!**
 
 Data comes from the free [queue-times.com](https://queue-times.com) API
-(Disneyland Park = park id `16`). The service uses **only the Python standard
+(Disneyland Park = `16`, California Adventure = `17`). The service uses **only the Python standard
 library** — no `pip install` required.
 
 > ☁️ **Want it always-on with real hands-free email?** Deploy it to Google Cloud
@@ -52,7 +62,7 @@ export GMAIL_ADDRESS="youraddress@gmail.com"      # the account that SENDS alert
 export GMAIL_APP_PASSWORD="abcd efgh ijkl mnop"   # the App Password from step 1
 export ALERT_RECIPIENT="rsalazarzugasti@gmail.com"  # where alerts go (default)
 # Optional:
-export WAIT_THRESHOLD=30          # minutes (default 30)
+export WAIT_THRESHOLDS=20,10      # alert tiers in minutes (default "20,10")
 export POLL_INTERVAL=300          # seconds between checks in --loop (default 300)
 ```
 

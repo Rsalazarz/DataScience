@@ -14,7 +14,7 @@ Environment variables (set at deploy time):
   GMAIL_ADDRESS        Gmail address that sends the alerts (SMTP login).
   GMAIL_APP_PASSWORD   Google App Password (inject via Secret Manager).
   ALERT_RECIPIENT      Where alerts go. Default: rsalazarzugasti@gmail.com
-  WAIT_THRESHOLD       Minutes. Default: 30
+  WAIT_THRESHOLDS      Comma-separated minutes, e.g. "20,10". Default: "20,10"
   STATE_BUCKET         Cloud Storage bucket name for state (required).
   STATE_BLOB           Object name for state. Default: alert_state.json
 
@@ -81,12 +81,12 @@ def check_rides(request):
         return (f"fetch error: {exc}", 500)
 
     state = load_state()
-    messages = ra.evaluate_alerts(statuses, state["rides"], cfg.wait_threshold, stamp)
+    messages = ra.evaluate_alerts(statuses, state["rides"], cfg.wait_thresholds, stamp)
 
     sent = 0
     for msg in messages:
         if cfg.email_configured():
-            ra.send_email(cfg, msg["subject"], msg["body"])
+            ra.send_email(cfg, msg["subject"], msg["body"], msg.get("html"))
             sent += 1
             print(f"{stamp} sent: {msg['subject']}")
         else:
@@ -95,9 +95,7 @@ def check_rides(request):
     save_state(state)
 
     summary = {
-        name: (
-            f"OPEN {info['wait_time']}m" if info["is_open"] else "closed"
-        )
+        name: (f"OPEN {info['wait_time']}m" if info["is_open"] else "closed")
         for name, info in statuses.items()
     }
     print(f"{stamp} checked {summary}; alerts sent={sent}")

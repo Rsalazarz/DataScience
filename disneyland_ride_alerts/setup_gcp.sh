@@ -11,7 +11,7 @@
 #   bash setup_gcp.sh
 #
 # You can pre-set any of these as environment variables to skip the prompts:
-#   PROJECT_ID, REGION, GMAIL_ADDRESS, ALERT_RECIPIENT, WAIT_THRESHOLD,
+#   PROJECT_ID, REGION, GMAIL_ADDRESS, ALERT_RECIPIENT, WAIT_THRESHOLDS,
 #   SCHEDULE, TIMEZONE
 #
 set -euo pipefail
@@ -19,8 +19,8 @@ set -euo pipefail
 # --- Configuration (env var overrides, otherwise prompted/defaulted) --------
 REGION="${REGION:-us-central1}"
 ALERT_RECIPIENT="${ALERT_RECIPIENT:-rsalazarzugasti@gmail.com}"
-WAIT_THRESHOLD="${WAIT_THRESHOLD:-30}"
-SCHEDULE="${SCHEDULE:-*/10 8-22 * * *}"
+WAIT_THRESHOLDS="${WAIT_THRESHOLDS:-20,10}"
+SCHEDULE="${SCHEDULE:-* 8-23 * * *}"
 TIMEZONE="${TIMEZONE:-America/Los_Angeles}"
 
 prompt() {  # prompt VAR "message" -> loops until a non-empty value is given
@@ -95,7 +95,7 @@ echo "Region:     $REGION"
 echo "Bucket:     $BUCKET"
 echo "Sender:     $GMAIL_ADDRESS"
 echo "Recipient:  $ALERT_RECIPIENT"
-echo "Threshold:  ${WAIT_THRESHOLD} min"
+echo "Thresholds: ${WAIT_THRESHOLDS} min"
 echo "Schedule:   '$SCHEDULE' ($TIMEZONE)"
 echo
 if [[ "${ASSUME_YES:-}" == "1" ]]; then
@@ -170,7 +170,7 @@ else
     --gen2 --runtime=python311 --region="$REGION" \
     --source=. --entry-point=check_rides \
     --trigger-http --no-allow-unauthenticated \
-    --set-env-vars="STATE_BUCKET=${BUCKET},GMAIL_ADDRESS=${GMAIL_ADDRESS},ALERT_RECIPIENT=${ALERT_RECIPIENT},WAIT_THRESHOLD=${WAIT_THRESHOLD}" \
+    --set-env-vars="^|^STATE_BUCKET=${BUCKET}|GMAIL_ADDRESS=${GMAIL_ADDRESS}|ALERT_RECIPIENT=${ALERT_RECIPIENT}|WAIT_THRESHOLDS=${WAIT_THRESHOLDS}" \
     --set-secrets="GMAIL_APP_PASSWORD=gmail-app-password:latest"
 fi
 
