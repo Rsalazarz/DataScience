@@ -45,12 +45,27 @@ fi
 prompt PROJECT_ID    "Google Cloud project ID: "
 prompt GMAIL_ADDRESS "Gmail address that SENDS alerts (e.g. you@gmail.com): "
 
+# Does the secret already exist? If so, the App Password is optional (you can
+# keep the stored one). If not, it's required.
+if gcloud secrets describe gmail-app-password --project="$PROJECT_ID" >/dev/null 2>&1; then
+  SECRET_EXISTS=true
+else
+  SECRET_EXISTS=false
+fi
+
 # App Password is read silently and never echoed or stored on disk.
-while [[ -z "${GMAIL_APP_PASSWORD:-}" ]]; do
-  read -r -s -p "Gmail App Password (input hidden): " GMAIL_APP_PASSWORD
-  echo
-  [[ -z "${GMAIL_APP_PASSWORD:-}" ]] && echo "  (this is required)"
-done
+if [[ -z "${GMAIL_APP_PASSWORD:-}" ]]; then
+  if $SECRET_EXISTS; then
+    read -r -s -p "Gmail App Password (press Enter to keep the stored one): " GMAIL_APP_PASSWORD
+    echo
+  else
+    while [[ -z "${GMAIL_APP_PASSWORD:-}" ]]; do
+      read -r -s -p "Gmail App Password (input hidden): " GMAIL_APP_PASSWORD
+      echo
+      [[ -z "${GMAIL_APP_PASSWORD:-}" ]] && echo "  (this is required)"
+    done
+  fi
+fi
 
 BUCKET="${BUCKET:-${PROJECT_ID}-disney-alert-state}"
 
@@ -95,7 +110,9 @@ fi
 
 # --- 3. Secret (Gmail App Password) -----------------------------------------
 echo "[3/7] Storing Gmail App Password in Secret Manager..."
-if gcloud secrets describe gmail-app-password >/dev/null 2>&1; then
+if [[ -z "${GMAIL_APP_PASSWORD:-}" ]]; then
+  echo "      no new password entered; keeping the stored secret."
+elif $SECRET_EXISTS; then
   printf '%s' "$GMAIL_APP_PASSWORD" | \
     gcloud secrets versions add gmail-app-password --data-file=-
 else
@@ -114,13 +131,20 @@ gcloud secrets add-iam-policy-binding gmail-app-password \
   --role="roles/secretmanager.secretAccessor" >/dev/null
 
 # --- 5. Deploy the function -------------------------------------------------
-echo "[5/7] Deploying Cloud Function (takes 1-3 minutes)..."
-gcloud functions deploy disney-ride-alerts \
-  --gen2 --runtime=python311 --region="$REGION" \
-  --source=. --entry-point=check_rides \
-  --trigger-http --no-allow-unauthenticated \
-  --set-env-vars="STATE_BUCKET=${BUCKET},GMAIL_ADDRESS=${GMAIL_ADDRESS},ALERT_RECIPIENT=${ALERT_RECIPIENT},WAIT_THRESHOLD=${WAIT_THRESHOLD}" \
-  --set-secrets="GMAIL_APP_PASSWORD=gmail-app-password:latest"
+# Skip the (slow) deploy if the function is already live, unless FORCE_DEPLOY=1.
+if [[ "${FORCE_DEPLOY:-}" != "1" ]] && \
+   gcloud functions describe disney-ride-alerts --region="$REGION" --gen2 \
+     --format='value(state)' 2>/dev/null | grep -q ACTIVE; then
+  echo "[5/7] Function already ACTIVE; skipping redeploy (set FORCE_DEPLOY=1 to force)."
+else
+  echo "[5/7] Deploying Cloud Function (takes 1-3 minutes)..."
+  gcloud functions deploy disney-ride-alerts \
+    --gen2 --runtime=python311 --region="$REGION" \
+    --source=. --entry-point=check_rides \
+    --trigger-http --no-allow-unauthenticated \
+    --set-env-vars="STATE_BUCKET=${BUCKET},GMAIL_ADDRESS=${GMAIL_ADDRESS},ALERT_RECIPIENT=${ALERT_RECIPIENT},WAIT_THRESHOLD=${WAIT_THRESHOLD}" \
+    --set-secrets="GMAIL_APP_PASSWORD=gmail-app-password:latest"
+fi
 
 # --- 6. IAM: bucket access for the function (used at runtime) ---------------
 echo "[6/7] Granting the function access to the state bucket..."
@@ -136,13 +160,28 @@ if ! gcloud iam service-accounts describe "$SCHED_SA" >/dev/null 2>&1; then
     --display-name="Disney alerts scheduler"
 fi
 
+# A freshly created service account takes a few seconds to propagate through
+# IAM; wait until it is resolvable before granting it roles.
+echo "      waiting for the scheduler service account to be ready..."
+for _ in $(seq 1 18); do
+  gcloud iam service-accounts describe "$SCHED_SA" >/dev/null 2>&1 && break
+  sleep 5
+done
+
 FUNC_URL=$(gcloud functions describe disney-ride-alerts \
   --region="$REGION" --gen2 --format='value(serviceConfig.uri)')
 
-gcloud run services add-iam-policy-binding disney-ride-alerts \
-  --region="$REGION" \
-  --member="serviceAccount:${SCHED_SA}" \
-  --role="roles/run.invoker" >/dev/null
+# Allow the scheduler SA to invoke the function, retrying while IAM catches up.
+for attempt in $(seq 1 18); do
+  if gcloud run services add-iam-policy-binding disney-ride-alerts \
+       --region="$REGION" \
+       --member="serviceAccount:${SCHED_SA}" \
+       --role="roles/run.invoker" >/dev/null 2>&1; then
+    break
+  fi
+  echo "      service account still propagating; retrying ($attempt/18)..."
+  sleep 5
+done
 
 if gcloud scheduler jobs describe disney-alerts-poll --location="$REGION" >/dev/null 2>&1; then
   gcloud scheduler jobs update http disney-alerts-poll --location="$REGION" \
