@@ -15,6 +15,8 @@ library** — no `pip install` required.
 > ☁️ **Want it always-on with real hands-free email?** Deploy it to Google Cloud
 > (Cloud Functions + Scheduler + Storage) for ~$0 — see **[DEPLOY.md](DEPLOY.md)**.
 > This is the most reliable option and removes the iOS email limitation.
+> **Setting it up from a phone?** Follow **[SETUP_ON_PHONE.md](SETUP_ON_PHONE.md)**
+> — the whole thing works in Google Cloud Shell via one script (`setup_gcp.sh`).
 >
 > 📱 **No computer? On an iPhone, no cloud?** iOS can't keep this Python loop
 > running in the background. See **[iOS_SETUP.md](iOS_SETUP.md)** for a phone-only
