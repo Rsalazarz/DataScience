@@ -33,6 +33,18 @@ prompt() {  # prompt VAR "message" -> loops until a non-empty value is given
 }
 
 echo "=== Disneyland ride alerts: Google Cloud setup ==="
+
+# --- Auth check (first, so non-interactive runs fail fast and clearly) -------
+# Cloud Shell sometimes starts without an active account selected, which makes
+# later steps fail with confusing errors (e.g. a false "billing not enabled").
+if ! gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | grep -q .; then
+  echo "[!] No active gcloud account in this session."
+  echo "    First try:  gcloud config set account YOUR_EMAIL@gmail.com"
+  echo "    If that fails:  gcloud auth login   (or click 'Authorize' in Cloud Shell)"
+  echo "    Then re-run this script."
+  exit 1
+fi
+
 # Default the project to whatever Cloud Shell / gcloud already has selected,
 # so on a phone you usually don't have to type it.
 if [[ -z "${PROJECT_ID:-}" ]]; then
@@ -56,8 +68,16 @@ fi
 # App Password is read silently and never echoed or stored on disk.
 if [[ -z "${GMAIL_APP_PASSWORD:-}" ]]; then
   if $SECRET_EXISTS; then
-    read -r -s -p "Gmail App Password (press Enter to keep the stored one): " GMAIL_APP_PASSWORD
-    echo
+    if [[ "${ASSUME_YES:-}" == "1" ]]; then
+      echo "Keeping the stored Gmail App Password."
+    else
+      read -r -s -p "Gmail App Password (press Enter to keep the stored one): " GMAIL_APP_PASSWORD
+      echo
+    fi
+  elif [[ "${ASSUME_YES:-}" == "1" ]]; then
+    echo "[!] No stored secret and no GMAIL_APP_PASSWORD provided -- cannot run" >&2
+    echo "    non-interactively. Re-run with GMAIL_APP_PASSWORD='your-app-password'." >&2
+    exit 1
   else
     while [[ -z "${GMAIL_APP_PASSWORD:-}" ]]; do
       read -r -s -p "Gmail App Password (input hidden): " GMAIL_APP_PASSWORD
@@ -78,20 +98,14 @@ echo "Recipient:  $ALERT_RECIPIENT"
 echo "Threshold:  ${WAIT_THRESHOLD} min"
 echo "Schedule:   '$SCHEDULE' ($TIMEZONE)"
 echo
-read -r -p "Proceed? [y/N] " ok
-[[ "$ok" == "y" || "$ok" == "Y" ]] || { echo "Aborted."; exit 1; }
+if [[ "${ASSUME_YES:-}" == "1" ]]; then
+  echo "Proceeding (ASSUME_YES=1)."
+else
+  read -r -p "Proceed? [y/N] " ok
+  [[ "$ok" == "y" || "$ok" == "Y" ]] || { echo "Aborted."; exit 1; }
+fi
 
 gcloud config set project "$PROJECT_ID" >/dev/null
-
-# --- Auth check -------------------------------------------------------------
-# Cloud Shell sometimes starts without active credentials, which makes later
-# steps fail with confusing errors (e.g. a false "billing not enabled").
-if ! gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | grep -q .; then
-  echo "[!] No active gcloud account in this session."
-  echo "    Run:  gcloud auth login"
-  echo "    (or click 'Authorize' in Cloud Shell), then re-run this script."
-  exit 1
-fi
 
 # --- 0. Billing sanity check (warn only) ------------------------------------
 if gcloud billing projects describe "$PROJECT_ID" \
@@ -100,8 +114,12 @@ if gcloud billing projects describe "$PROJECT_ID" \
 else
   echo "[!] Billing does NOT appear to be enabled on $PROJECT_ID."
   echo "    Enable it at https://console.cloud.google.com/billing then re-run."
-  read -r -p "Continue anyway? [y/N] " c
-  [[ "$c" == "y" || "$c" == "Y" ]] || exit 1
+  if [[ "${ASSUME_YES:-}" == "1" ]]; then
+    echo "    (continuing anyway; ASSUME_YES=1)"
+  else
+    read -r -p "Continue anyway? [y/N] " c
+    [[ "$c" == "y" || "$c" == "Y" ]] || exit 1
+  fi
 fi
 
 # --- 1. Enable APIs ---------------------------------------------------------
