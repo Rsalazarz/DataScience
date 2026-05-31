@@ -2,9 +2,30 @@
 
 Yes — you can do all of this on your phone, no computer needed. The key tool is
 **Google Cloud Shell**: a free, browser-based terminal that already has `gcloud`
-installed and signed in. You'll clone this repo into it and run one script.
+installed and signed in.
 
 Budget ~20 minutes the first time. After this, the alerts run 24/7 on their own.
+
+---
+
+## 🚀 Fastest path: one-tap "Open in Cloud Shell"
+
+**Can't copy/paste in the mobile terminal?** Use this — it auto-clones the repo,
+opens the right folder, and shows a tap-along tutorial, so the only thing you
+type by hand is `bash setup_gcp.sh`:
+
+👉 **[Open this project in Cloud Shell](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FRsalazarz%2FDataScience&cloudshell_git_branch=claude%2Fdisneyland-ride-alerts-VN4mc&cloudshell_workspace=disneyland_ride_alerts&cloudshell_tutorial=cloudshell_tutorial.md)**
+
+> Once merged into `master`, you can drop `&cloudshell_git_branch=...` from the
+> link.
+
+After it opens: do the project + App Password prep below (Steps 1–2), then in the
+terminal type `bash setup_gcp.sh` and follow the tutorial panel. The tutorial's
+command buttons drop text into the terminal for you — no paste required.
+
+If you'd rather do it manually, the full steps follow.
+
+---
 
 ---
 
@@ -111,5 +132,13 @@ To remove everything, see the **Tear down** section in [DEPLOY.md](DEPLOY.md).
 - **Cloud Shell session timed out / disconnected** — it's ephemeral but your
   `git clone` persists in its home dir; just reopen and `cd` back in. Anything
   already deployed keeps running regardless of the shell.
-- **Typing on a phone is fiddly** — paste commands from this file rather than
-  typing them; Cloud Shell supports paste.
+- **Copy/paste doesn't work in the mobile terminal** — common on phones. Fixes:
+  - Use the **one-tap "Open in Cloud Shell" link** above so you don't need to
+    clone/`cd` — then you only type `bash setup_gcp.sh` by hand (short enough).
+  - In the tutorial panel, tap a command's **copy/▶ button**; it inserts the
+    command into the terminal for you, then press Enter.
+  - To paste manually: **long-press** in the terminal area and choose **Paste**,
+    or open the terminal's **⋮ (more)** menu → **Paste**. The Google Cloud iOS
+    app's terminal also has a dedicated paste button in its toolbar.
+  - Worst case, type `bash setup_gcp.sh` by hand — it's the only command you
+    truly need; everything else is prompts you answer.

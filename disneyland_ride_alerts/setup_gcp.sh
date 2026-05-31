@@ -32,6 +32,15 @@ prompt() {  # prompt VAR "message" -> sets VAR if currently empty
 }
 
 echo "=== Disneyland ride alerts: Google Cloud setup ==="
+# Default the project to whatever Cloud Shell / gcloud already has selected,
+# so on a phone you usually don't have to type it.
+if [[ -z "${PROJECT_ID:-}" ]]; then
+  _cur="$(gcloud config get-value project 2>/dev/null || true)"
+  if [[ -n "$_cur" && "$_cur" != "(unset)" ]]; then
+    PROJECT_ID="$_cur"
+    echo "Using already-selected project: $PROJECT_ID"
+  fi
+fi
 prompt PROJECT_ID    "Google Cloud project ID: "
 prompt GMAIL_ADDRESS "Gmail address that SENDS alerts (e.g. you@gmail.com): "
 
