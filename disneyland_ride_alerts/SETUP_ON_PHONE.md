@@ -41,13 +41,14 @@ your normal password):
 2. Wait for the terminal prompt, then clone this repo and enter the folder:
 
    ```bash
-   git clone https://github.com/Rsalazarz/DataScience.git
+   git clone -b claude/disneyland-ride-alerts-VN4mc https://github.com/Rsalazarz/DataScience.git
    cd DataScience/disneyland_ride_alerts
    ```
 
-   - If the repo is **private**, Cloud Shell will ask for a username and a
-     **GitHub personal access token** (create one at
-     <https://github.com/settings/tokens> with `repo` scope) as the password.
+   - The repo is **public**, so this clone needs no login.
+   - The `-b claude/disneyland-ride-alerts-VN4mc` is important: the alert code
+     lives on that branch, not on `master`. (Once you merge it to `master`, you
+     can drop the `-b ...` flag.)
 
 ## Step 4 — Run the setup script
 
@@ -93,7 +94,9 @@ gcloud scheduler jobs pause disney-alerts-poll --location=us-central1
 gcloud scheduler jobs resume disney-alerts-poll --location=us-central1
 
 # Change threshold/recipient/schedule: edit values and re-run the script.
-cd ~/DataScience/disneyland_ride_alerts && git pull && WAIT_THRESHOLD=25 bash setup_gcp.sh
+cd ~/DataScience/disneyland_ride_alerts \
+  && git pull origin claude/disneyland-ride-alerts-VN4mc \
+  && WAIT_THRESHOLD=25 bash setup_gcp.sh
 ```
 
 To remove everything, see the **Tear down** section in [DEPLOY.md](DEPLOY.md).
