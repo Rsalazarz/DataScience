@@ -12,6 +12,10 @@ Data comes from the free [queue-times.com](https://queue-times.com) API
 (Disneyland Park = park id `16`). The service uses **only the Python standard
 library** — no `pip install` required.
 
+> 📱 **No computer? On an iPhone?** iOS can't keep this Python loop running in
+> the background. See **[iOS_SETUP.md](iOS_SETUP.md)** for a phone-only,
+> cloud-free setup using Apple Shortcuts + Personal Automations.
+
 ## What you get
 
 For each watched ride, on each day:
