@@ -84,6 +84,8 @@ class Config:
         self.wait_thresholds = self._parse_thresholds()
         self.poll_interval = int(os.environ.get("POLL_INTERVAL", DEFAULT_POLL_INTERVAL))
         self.state_file = os.environ.get("STATE_FILE", DEFAULT_STATE_FILE)
+        # "digest" = one all-rides email each run; "events" = per-event alerts.
+        self.alert_mode = os.environ.get("ALERT_MODE", "digest").strip().lower()
         self.smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com").strip()
         self.smtp_port = int(os.environ.get("SMTP_PORT", 465))
 
@@ -205,6 +207,91 @@ def _alert_message(kind: str, name: str, info: dict, stamp: str,
     return {"subject": subject, "body": plain, "html": html}
 
 
+# --- Digest (one email with ALL rides) --------------------------------------
+_PARK_SHORT = {"Disneyland Park": "Disneyland", "Disney California Adventure": "California Adventure"}
+
+
+def _now_display() -> str:
+    """Current time as a friendly Pacific string, falling back to UTC."""
+    try:
+        from zoneinfo import ZoneInfo
+        now = dt.datetime.now(ZoneInfo("America/Los_Angeles"))
+        return now.strftime("%I:%M %p").lstrip("0") + " PT"
+    except Exception:
+        return dt.datetime.now(dt.timezone.utc).strftime("%H:%M UTC")
+
+
+def _digest_row(name: str, info: dict, low_t: int, mid_t: int) -> str:
+    park = _PARK_SHORT.get(info["park"], info["park"])
+    wait = info["wait_time"]
+    if not info["is_open"]:
+        cell, bg, color = "Closed", "#f7f7f7", "#999"
+    elif wait < low_t:
+        cell, bg, color = f"{wait} min", "#e7f7ec", "#1a9e4b"
+    elif wait < mid_t:
+        cell, bg, color = f"{wait} min", "#fff3e6", "#e67e22"
+    else:
+        cell, bg, color = f"{wait} min", "#ffffff", "#333"
+    return (
+        f'<tr style="background:{bg}">'
+        f'<td style="padding:9px 12px;border-bottom:1px solid #eee">{name}'
+        f'<div style="color:#999;font-size:12px">{park}</div></td>'
+        f'<td style="padding:9px 12px;border-bottom:1px solid #eee;text-align:right;'
+        f'font-weight:bold;color:{color};white-space:nowrap">{cell}</td></tr>'
+    )
+
+
+def build_digest(statuses: dict[str, dict], thresholds: list[int], stamp: str) -> dict | None:
+    """One {subject, body, html} email summarising ALL watched rides.
+
+    Open rides are listed shortest-wait first (most actionable on top), then
+    closed rides. Returns None if every ride is closed (nothing worth sending).
+    """
+    thr = sorted(thresholds)
+    low_t, mid_t = thr[0], thr[-1]
+
+    open_rides = sorted(
+        ((n, i) for n, i in statuses.items() if i["is_open"]),
+        key=lambda kv: kv[1]["wait_time"],
+    )
+    closed_rides = sorted(
+        ((n, i) for n, i in statuses.items() if not i["is_open"]),
+        key=lambda kv: kv[0],
+    )
+    if not open_rides:
+        return None  # park effectively closed; skip the email
+
+    when = _now_display()
+    under_mid = [n for n, i in open_rides if i["wait_time"] < mid_t]
+    if under_mid:
+        subject = f"🎢 {len(under_mid)} ride(s) under {mid_t} min — Disneyland @ {when}"
+    else:
+        subject = f"🎢 Disneyland ride waits @ {when}"
+
+    plain_lines = [f"Disneyland Resort wait times — {when}", ""]
+    for n, i in open_rides:
+        w = i["wait_time"]
+        flag = "  <<< GO" if w < low_t else ("  < short" if w < mid_t else "")
+        plain_lines.append(f"{w:>3} min  {n} [{_PARK_SHORT.get(i['park'], i['park'])}]{flag}")
+    for n, i in closed_rides:
+        plain_lines.append(f"  --    {n} [{_PARK_SHORT.get(i['park'], i['park'])}] (closed)")
+    plain = "\n".join(plain_lines)
+
+    rows = "".join(_digest_row(n, i, low_t, mid_t) for n, i in open_rides)
+    rows += "".join(_digest_row(n, i, low_t, mid_t) for n, i in closed_rides)
+    html = (
+        '<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px">'
+        '<h2 style="margin:0 0 2px">🎢 Disneyland Resort wait times</h2>'
+        f'<div style="color:#666;margin-bottom:12px">As of {when}</div>'
+        '<table style="border-collapse:collapse;width:100%;border:1px solid #eee">'
+        f'{rows}</table>'
+        f'<div style="color:#999;font-size:12px;margin-top:10px">'
+        f'🟢 under {low_t} min &nbsp;·&nbsp; 🟠 under {mid_t} min &nbsp;·&nbsp; '
+        'automatic update</div></div>'
+    )
+    return {"subject": subject, "body": plain, "html": html}
+
+
 # --- Alert engine (shared by CLI and the Cloud Function) --------------------
 def evaluate_alerts(statuses: dict[str, dict], ride_states: dict[str, dict],
                     thresholds: list[int], stamp: str) -> list[dict]:
@@ -303,7 +390,11 @@ def check_once(cfg: Config, dry_run: bool = False) -> None:
         status_word = f"OPEN ({info['wait_time']} min)" if info["is_open"] else "closed"
         print(f"{stamp} [{info['park']}] {name}: {status_word}")
 
-    messages = evaluate_alerts(statuses, state["rides"], cfg.wait_thresholds, stamp)
+    if cfg.alert_mode == "digest":
+        digest = build_digest(statuses, cfg.wait_thresholds, stamp)
+        messages = [digest] if digest else []
+    else:
+        messages = evaluate_alerts(statuses, state["rides"], cfg.wait_thresholds, stamp)
     for msg in messages:
         deliver(cfg, msg, dry_run=dry_run)
 

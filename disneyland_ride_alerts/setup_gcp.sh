@@ -20,7 +20,8 @@ set -euo pipefail
 REGION="${REGION:-us-central1}"
 ALERT_RECIPIENT="${ALERT_RECIPIENT:-rsalazarzugasti@gmail.com}"
 WAIT_THRESHOLDS="${WAIT_THRESHOLDS:-20,10}"
-SCHEDULE="${SCHEDULE:-* 8-23 * * *}"
+ALERT_MODE="${ALERT_MODE:-digest}"
+SCHEDULE="${SCHEDULE:-*/5 8-23 * * *}"
 TIMEZONE="${TIMEZONE:-America/Los_Angeles}"
 
 prompt() {  # prompt VAR "message" -> loops until a non-empty value is given
@@ -96,6 +97,7 @@ echo "Bucket:     $BUCKET"
 echo "Sender:     $GMAIL_ADDRESS"
 echo "Recipient:  $ALERT_RECIPIENT"
 echo "Thresholds: ${WAIT_THRESHOLDS} min"
+echo "Mode:       ${ALERT_MODE}"
 echo "Schedule:   '$SCHEDULE' ($TIMEZONE)"
 echo
 if [[ "${ASSUME_YES:-}" == "1" ]]; then
@@ -170,7 +172,7 @@ else
     --gen2 --runtime=python311 --region="$REGION" \
     --source=. --entry-point=check_rides \
     --trigger-http --no-allow-unauthenticated \
-    --set-env-vars="^|^STATE_BUCKET=${BUCKET}|GMAIL_ADDRESS=${GMAIL_ADDRESS}|ALERT_RECIPIENT=${ALERT_RECIPIENT}|WAIT_THRESHOLDS=${WAIT_THRESHOLDS}" \
+    --set-env-vars="^|^STATE_BUCKET=${BUCKET}|GMAIL_ADDRESS=${GMAIL_ADDRESS}|ALERT_RECIPIENT=${ALERT_RECIPIENT}|WAIT_THRESHOLDS=${WAIT_THRESHOLDS}|ALERT_MODE=${ALERT_MODE}" \
     --set-secrets="GMAIL_APP_PASSWORD=gmail-app-password:latest"
 fi
 

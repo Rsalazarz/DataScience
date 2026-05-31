@@ -81,7 +81,11 @@ def check_rides(request):
         return (f"fetch error: {exc}", 500)
 
     state = load_state()
-    messages = ra.evaluate_alerts(statuses, state["rides"], cfg.wait_thresholds, stamp)
+    if cfg.alert_mode == "digest":
+        digest = ra.build_digest(statuses, cfg.wait_thresholds, stamp)
+        messages = [digest] if digest else []
+    else:
+        messages = ra.evaluate_alerts(statuses, state["rides"], cfg.wait_thresholds, stamp)
 
     sent = 0
     for msg in messages:
