@@ -66,7 +66,27 @@ printf '%s' 'your-16-char-app-password' | \
 
 ## 4. Deploy the Cloud Function
 
-Run from inside the `disneyland_ride_alerts/` directory (so `main.py`,
+First grant the function's service account access to the resources it needs.
+The function runs as the project's **default compute service account**, and it
+must be allowed to read the secret **before** you deploy — otherwise the new
+revision can't start (`Permission denied on secret ...`):
+
+```bash
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+# Read the Gmail App Password secret (required for the deploy to succeed):
+gcloud secrets add-iam-policy-binding gmail-app-password \
+  --member="serviceAccount:${COMPUTE_SA}" \
+  --role="roles/secretmanager.secretAccessor"
+
+# Read/write the de-dup state object (used at runtime):
+gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
+  --member="serviceAccount:${COMPUTE_SA}" \
+  --role="roles/storage.objectAdmin"
+```
+
+Then deploy from inside the `disneyland_ride_alerts/` directory (so `main.py`,
 `ride_alerts.py`, and `requirements.txt` are all uploaded together):
 
 ```bash
@@ -80,22 +100,6 @@ gcloud functions deploy disney-ride-alerts \
 
 `--no-allow-unauthenticated` keeps the endpoint private; only the Scheduler
 service account (next step) will be allowed to call it.
-
-## 5. Give the function access to the bucket
-
-The function runs as the project's default compute service account. Let it
-read/write the state object:
-
-```bash
-PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
-COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
-
-gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
-  --member="serviceAccount:${COMPUTE_SA}" \
-  --role="roles/storage.objectAdmin"
-```
-
-(Secret access is granted automatically by `--set-secrets`.)
 
 ## 6. Schedule it during park hours
 

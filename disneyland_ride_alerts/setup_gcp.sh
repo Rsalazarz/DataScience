@@ -23,12 +23,13 @@ WAIT_THRESHOLD="${WAIT_THRESHOLD:-30}"
 SCHEDULE="${SCHEDULE:-*/10 8-22 * * *}"
 TIMEZONE="${TIMEZONE:-America/Los_Angeles}"
 
-prompt() {  # prompt VAR "message" -> sets VAR if currently empty
+prompt() {  # prompt VAR "message" -> loops until a non-empty value is given
   local _var="$1" _msg="$2" _val
-  if [[ -z "${!_var:-}" ]]; then
+  while [[ -z "${!_var:-}" ]]; do
     read -r -p "$_msg" _val
     printf -v "$_var" '%s' "$_val"
-  fi
+    [[ -z "${!_var:-}" ]] && echo "  (this is required)"
+  done
 }
 
 echo "=== Disneyland ride alerts: Google Cloud setup ==="
@@ -45,10 +46,11 @@ prompt PROJECT_ID    "Google Cloud project ID: "
 prompt GMAIL_ADDRESS "Gmail address that SENDS alerts (e.g. you@gmail.com): "
 
 # App Password is read silently and never echoed or stored on disk.
-if [[ -z "${GMAIL_APP_PASSWORD:-}" ]]; then
+while [[ -z "${GMAIL_APP_PASSWORD:-}" ]]; do
   read -r -s -p "Gmail App Password (input hidden): " GMAIL_APP_PASSWORD
   echo
-fi
+  [[ -z "${GMAIL_APP_PASSWORD:-}" ]] && echo "  (this is required)"
+done
 
 BUCKET="${BUCKET:-${PROJECT_ID}-disney-alert-state}"
 
@@ -78,13 +80,13 @@ else
 fi
 
 # --- 1. Enable APIs ---------------------------------------------------------
-echo "[1/6] Enabling APIs (this can take a minute)..."
+echo "[1/7] Enabling APIs (this can take a minute)..."
 gcloud services enable \
   cloudfunctions.googleapis.com run.googleapis.com cloudbuild.googleapis.com \
   cloudscheduler.googleapis.com secretmanager.googleapis.com storage.googleapis.com
 
 # --- 2. State bucket --------------------------------------------------------
-echo "[2/6] Ensuring state bucket gs://$BUCKET ..."
+echo "[2/7] Ensuring state bucket gs://$BUCKET ..."
 if ! gcloud storage buckets describe "gs://$BUCKET" >/dev/null 2>&1; then
   gcloud storage buckets create "gs://$BUCKET" --location="$REGION"
 else
@@ -92,7 +94,7 @@ else
 fi
 
 # --- 3. Secret (Gmail App Password) -----------------------------------------
-echo "[3/6] Storing Gmail App Password in Secret Manager..."
+echo "[3/7] Storing Gmail App Password in Secret Manager..."
 if gcloud secrets describe gmail-app-password >/dev/null 2>&1; then
   printf '%s' "$GMAIL_APP_PASSWORD" | \
     gcloud secrets versions add gmail-app-password --data-file=-
@@ -102,8 +104,17 @@ else
 fi
 unset GMAIL_APP_PASSWORD
 
-# --- 4. Deploy the function -------------------------------------------------
-echo "[4/6] Deploying Cloud Function (takes 1-3 minutes)..."
+# --- 4. IAM: let the function's service account read the secret -------------
+# This MUST happen before deploy, or the new revision can't start.
+echo "[4/7] Granting the function access to the secret..."
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+gcloud secrets add-iam-policy-binding gmail-app-password \
+  --member="serviceAccount:${COMPUTE_SA}" \
+  --role="roles/secretmanager.secretAccessor" >/dev/null
+
+# --- 5. Deploy the function -------------------------------------------------
+echo "[5/7] Deploying Cloud Function (takes 1-3 minutes)..."
 gcloud functions deploy disney-ride-alerts \
   --gen2 --runtime=python311 --region="$REGION" \
   --source=. --entry-point=check_rides \
@@ -111,16 +122,14 @@ gcloud functions deploy disney-ride-alerts \
   --set-env-vars="STATE_BUCKET=${BUCKET},GMAIL_ADDRESS=${GMAIL_ADDRESS},ALERT_RECIPIENT=${ALERT_RECIPIENT},WAIT_THRESHOLD=${WAIT_THRESHOLD}" \
   --set-secrets="GMAIL_APP_PASSWORD=gmail-app-password:latest"
 
-# --- 5. IAM: bucket access for the function ---------------------------------
-echo "[5/6] Granting the function access to the state bucket..."
-PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
-COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+# --- 6. IAM: bucket access for the function (used at runtime) ---------------
+echo "[6/7] Granting the function access to the state bucket..."
 gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" \
   --member="serviceAccount:${COMPUTE_SA}" \
   --role="roles/storage.objectAdmin" >/dev/null
 
-# --- 6. Scheduler job -------------------------------------------------------
-echo "[6/6] Creating the Cloud Scheduler poll job..."
+# --- 7. Scheduler job -------------------------------------------------------
+echo "[7/7] Creating the Cloud Scheduler poll job..."
 SCHED_SA="disney-scheduler@${PROJECT_ID}.iam.gserviceaccount.com"
 if ! gcloud iam service-accounts describe "$SCHED_SA" >/dev/null 2>&1; then
   gcloud iam service-accounts create disney-scheduler \
