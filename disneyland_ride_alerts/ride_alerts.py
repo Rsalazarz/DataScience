@@ -177,47 +177,76 @@ def check_once(cfg: Config, dry_run: bool = False) -> None:
 
     state = load_state(cfg.state_file)
 
+    # Log current status for each ride (CLI visibility).
     for name in sorted(WATCHED_RIDES):
         info = statuses.get(name)
         if info is None:
             print(f"{stamp} {name}: not found in API response")
             continue
+        status_word = f"OPEN ({info['wait_time']} min)" if info["is_open"] else "closed"
+        print(f"{stamp} {name}: {status_word}")
 
-        rs = _ride_state(state, name)
+    # Decide which alerts are due (shared logic), then deliver them.
+    messages = evaluate_alerts(statuses, state["rides"], cfg.wait_threshold, stamp)
+    for msg in messages:
+        deliver(cfg, msg["subject"], msg["body"], dry_run=dry_run)
+
+    save_state(cfg.state_file, state)
+
+
+def evaluate_alerts(
+    statuses: dict[str, dict],
+    ride_states: dict[str, dict],
+    threshold: int,
+    stamp: str,
+) -> list[dict]:
+    """Pure-ish alert engine shared by the CLI and the Cloud Function.
+
+    Given the current ride statuses and the persisted per-ride alert state,
+    return the list of {"subject", "body"} messages that should be sent now,
+    mutating ``ride_states`` in place to record what was alerted.
+    """
+    messages: list[dict] = []
+    for name in sorted(WATCHED_RIDES):
+        info = statuses.get(name)
+        if info is None:
+            continue
+
+        rs = ride_states.setdefault(
+            name, {"opened_notified": False, "low_wait_notified": False}
+        )
         is_open = info["is_open"]
         wait = info["wait_time"]
-        status_word = f"OPEN ({wait} min)" if is_open else "closed"
-        print(f"{stamp} {name}: {status_word}")
 
         # 1) Ride opened -> notify once per day.
         if is_open and not rs["opened_notified"]:
-            deliver(
-                cfg,
-                subject=f"🎢 OPEN: {name} at Disneyland",
-                body=(
-                    f"{name} is now OPEN at Disneyland Park (California).\n\n"
-                    f"Current wait time: {wait} minutes.\n"
-                    f"Checked at: {stamp}\n\n"
-                    f"Live wait times: https://queue-times.com/parks/{PARK_ID}"
-                ),
-                dry_run=dry_run,
+            messages.append(
+                {
+                    "subject": f"🎢 OPEN: {name} at Disneyland",
+                    "body": (
+                        f"{name} is now OPEN at Disneyland Park (California).\n\n"
+                        f"Current wait time: {wait} minutes.\n"
+                        f"Checked at: {stamp}\n\n"
+                        f"Live wait times: https://queue-times.com/parks/{PARK_ID}"
+                    ),
+                }
             )
             rs["opened_notified"] = True
 
         # 2) Wait time under threshold -> notify once per "low-wait episode".
-        if is_open and wait < cfg.wait_threshold:
+        if is_open and wait < threshold:
             if not rs["low_wait_notified"]:
-                deliver(
-                    cfg,
-                    subject=f"⏱️ LOW WAIT: {name} is {wait} min (< {cfg.wait_threshold})",
-                    body=(
-                        f"{name} at Disneyland Park (California) has a short wait!\n\n"
-                        f"Current wait time: {wait} minutes "
-                        f"(under your {cfg.wait_threshold}-minute threshold).\n"
-                        f"Checked at: {stamp}\n\n"
-                        f"Go now: https://queue-times.com/parks/{PARK_ID}"
-                    ),
-                    dry_run=dry_run,
+                messages.append(
+                    {
+                        "subject": f"⏱️ LOW WAIT: {name} is {wait} min (< {threshold})",
+                        "body": (
+                            f"{name} at Disneyland Park (California) has a short wait!\n\n"
+                            f"Current wait time: {wait} minutes "
+                            f"(under your {threshold}-minute threshold).\n"
+                            f"Checked at: {stamp}\n\n"
+                            f"Go now: https://queue-times.com/parks/{PARK_ID}"
+                        ),
+                    }
                 )
                 rs["low_wait_notified"] = True
         else:
@@ -225,7 +254,7 @@ def check_once(cfg: Config, dry_run: bool = False) -> None:
             # so the next dip below the threshold notifies again.
             rs["low_wait_notified"] = False
 
-    save_state(cfg.state_file, state)
+    return messages
 
 
 def run_loop(cfg: Config, dry_run: bool = False) -> None:

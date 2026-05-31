@@ -1,0 +1,4 @@
+# Dependencies for the Google Cloud Function (main.py).
+# The CLI (ride_alerts.py) itself needs NONE of these — it is stdlib-only.
+functions-framework==3.*
+google-cloud-storage==2.*

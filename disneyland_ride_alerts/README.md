@@ -12,9 +12,13 @@ Data comes from the free [queue-times.com](https://queue-times.com) API
 (Disneyland Park = park id `16`). The service uses **only the Python standard
 library** — no `pip install` required.
 
-> 📱 **No computer? On an iPhone?** iOS can't keep this Python loop running in
-> the background. See **[iOS_SETUP.md](iOS_SETUP.md)** for a phone-only,
-> cloud-free setup using Apple Shortcuts + Personal Automations.
+> ☁️ **Want it always-on with real hands-free email?** Deploy it to Google Cloud
+> (Cloud Functions + Scheduler + Storage) for ~$0 — see **[DEPLOY.md](DEPLOY.md)**.
+> This is the most reliable option and removes the iOS email limitation.
+>
+> 📱 **No computer? On an iPhone, no cloud?** iOS can't keep this Python loop
+> running in the background. See **[iOS_SETUP.md](iOS_SETUP.md)** for a phone-only
+> setup using Apple Shortcuts + Personal Automations.
 
 ## What you get
 
